@@ -49,6 +49,16 @@
   .bar { display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .bar .info { color: var(--dim); font-variant-numeric: tabular-nums; }
   .bar .spacer { flex: 1; }
+  .group, .tabs { display: flex; gap: 6px; align-items: center; }
+  .tabs { gap: 0; }
+  .tabs button { border-radius: 0; }
+  .tabs button:first-child { border-radius: 4px 0 0 4px; }
+  .tabs button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+  .tabs button.sel { background: var(--line); color: var(--accent); }
+  .bar .grow { flex: 1; min-width: 200px; }
+  .bar .grow input[type=range] { flex: 1; }
+  #vStart, #vEnd { width: 64px; }
+  .drop > div { max-width: 460px; padding: 0 16px; }
   .files { display: flex; gap: 6px; padding: 8px 14px; overflow-x: auto; border-bottom: 1px solid var(--line); }
   .files:empty { display: none; }
   .files button { display: flex; gap: 6px; align-items: center; white-space: nowrap; font-size: 12px; }
@@ -129,14 +139,33 @@
 
   <main>
     <div class="bar">
-      <button id="open" class="primary">Open images…</button>
-      <input type="file" id="files" accept="image/*" multiple hidden>
+      <span class="tabs"><button data-mode="images" class="sel">Images</button><button data-mode="video">Video</button></span>
+      <span class="group" id="imgBar">
+        <button id="open" class="primary">Open images…</button>
+        <input type="file" id="files" accept="image/*" multiple hidden>
+      </span>
+      <span class="group" id="vidOpenBar">
+        <button id="vOpen" class="primary">Open video…</button>
+        <input type="file" id="vFile" accept="video/*" hidden>
+      </span>
       <label class="inline">Zoom <select id="zoom"><option value="0">Fit</option><option>1</option><option>2</option><option>4</option><option>8</option></select></label>
       <label class="inline"><input type="checkbox" id="showSrc" checked> Source</label>
       <span class="info" id="info"></span>
       <span class="spacer"></span>
-      <button id="dl" disabled>Download</button>
-      <button id="dlAll" disabled>Download all</button>
+      <span class="group" id="imgDl">
+        <button id="dl" disabled>Download</button>
+        <button id="dlAll" disabled>Download all</button>
+      </span>
+    </div>
+    <div class="bar" id="vidBar" hidden>
+      <label class="inline grow">Frame <input type="range" id="vScrub" min="0" max="1" step="0.01" value="0"><span class="info" id="vScrubV"></span></label>
+      <label class="inline">From <input type="number" id="vStart" min="0" step="0.1" value="0"> to <input type="number" id="vEnd" min="0" step="0.1" value="0"> s</label>
+      <label class="inline">FPS <select id="vFps"><option>8</option><option>12</option><option>15</option><option>24</option><option>25</option><option selected>30</option><option>60</option></select></label>
+      <span class="info" id="vFrames"></span>
+      <label class="inline">Format <select id="vFormat"><option value="mp4">MP4 (H.264)</option><option value="png">PNG sequence (.zip)</option></select></label>
+      <button id="vExport" class="primary">Export</button>
+      <progress id="vProgress" max="1" value="0" hidden></progress>
+      <button id="vCancel" hidden>Cancel</button>
     </div>
     <div class="files" id="fileList"></div>
     <div class="stage" id="stage">
@@ -144,7 +173,11 @@
         <figure id="srcFig"><figcaption>Source</figcaption><canvas id="srcCv"></canvas></figure>
         <figure><figcaption id="outCap">Result</figcaption><canvas id="outCv"></canvas></figure>
       </div>
-      <div class="drop" id="dropHint"><div><b>Drop textures here</b>or paste (⌘V / Ctrl+V), or use Open images…</div></div>
+      <div class="drop" id="dropHint">
+        <div id="dropImg"><b>Drop textures here</b>or paste (⌘V / Ctrl+V), or use Open images…</div>
+        <div id="dropVid" hidden><b>Drop a video here</b>or use Open video… Frames are filtered with the settings on the left.<br>
+          MP4 is H.264 4:2:0 and softens colour dither — use Upscale ×2 or more, or export a lossless PNG sequence. No audio.</div>
+      </div>
     </div>
   </main>
 </div>

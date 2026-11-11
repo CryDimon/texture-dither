@@ -1,4 +1,5 @@
 import * as D from "./dither.js";
+import { initVideo } from "./video.js";
 
 const $ = id => document.getElementById(id);
 const LUT_KEYS = ["gain", "saturation", "hue_weight", "softness", "snap_light", "snap_color"];
@@ -14,6 +15,9 @@ const state = {
 let images = [];          // { name, img, out }
 let current = -1;
 let fileLut = null, lutCache = null, lutKey = "";
+let mode = "images";      // "images" | "video"
+let shown = null;         // [src, out] on the stage
+let video = null;
 
 // ---------- settings
 
@@ -105,6 +109,7 @@ function bind() {
     try { Object.assign(state, JSON.parse(await f.text())); syncUi(); changed(); } catch (e) { alert("Bad settings file: " + e.message); }
   };
 
+  for (const b of document.querySelectorAll("[data-mode]")) b.onclick = () => setMode(b.dataset.mode);
   $("open").onclick = () => $("files").click();
   $("files").onchange = () => addFiles($("files").files);
   $("zoom").onchange = layout;
@@ -158,6 +163,12 @@ function changed() {
   pending = requestAnimationFrame(show);
 }
 
+function setMode(m) {
+  mode = m;
+  for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("sel", b.dataset.mode === m);
+  show();
+}
+
 function drawLutPreview() {
   const l = getLut(), cv = $("lutPrev");
   if (!l) { cv.hidden = true; return; }
@@ -177,6 +188,9 @@ async function decode(file) {
 }
 
 async function addFiles(list) {
+  const clip = [...list].find(f => f.type.startsWith("video/"));
+  if (clip) { setMode("video"); await video.open(clip); return; }
+  if (mode === "video") setMode("images");
   for (const f of list) {
     if (!f.type.startsWith("image/")) continue;
     try { images.push({ name: f.name || "pasted.png", img: await decode(f), out: null }); }
@@ -205,33 +219,47 @@ function renderFileList() {
 }
 
 function show() {
+  const vid = mode === "video";
+  $("imgBar").hidden = $("imgDl").hidden = $("fileList").hidden = $("dropImg").hidden = vid;
+  $("vidBar").hidden = $("vidOpenBar").hidden = $("dropVid").hidden = !vid;
+  if (vid) {
+    if (!video.loaded()) showPair(null);
+    else video.refresh();
+    return;
+  }
   const it = images[current];
-  $("dropHint").hidden = !!it;
-  $("views").hidden = !it;
-  if (!it) { $("info").textContent = ""; return; }
+  if (!it) { showPair(null); return; }
   ensureOut(it);
-  paint($("srcCv"), it.img);
-  paint($("outCv"), it.out);
   const p = params(it.img);
-  $("outCap").textContent = `Result ${it.out.w}×${it.out.h}`;
-  $("info").textContent = `${it.img.w}×${it.img.h} → ${p.workW}×${p.workH} · ${state.bits}-bit` + (p.upscale > 1 ? ` · ×${p.upscale}` : "");
+  showPair(it.img, it.out, `${it.img.w}×${it.img.h} → ${p.workW}×${p.workH} · ${state.bits}-bit` + (p.upscale > 1 ? ` · ×${p.upscale}` : ""));
+}
+
+// Put a source/result pair on the stage (null clears it and shows the drop hint).
+function showPair(src, out, info = "") {
+  shown = src ? [src, out] : null;
+  $("dropHint").hidden = !!src;
+  $("views").hidden = !src;
+  $("info").textContent = info;
+  if (!src) return;
+  paint($("srcCv"), src);
+  paint($("outCv"), out);
+  $("outCap").textContent = `Result ${out.w}×${out.h}`;
   layout();
 }
 
 function layout() {
-  const it = images[current];
-  if (!it) return;
+  if (!shown) return;
+  const [src, out] = shown;
   let z = +$("zoom").value;
   const showSrc = $("showSrc").checked;
-  const cvs = [[$("srcCv"), it.img], [$("outCv"), it.out]];
   if (!z) {
     const st = $("stage"), cols = showSrc ? 2 : 1;
     const availW = (st.clientWidth - 32 - (cols - 1) * 16) / cols, availH = st.clientHeight - 56;
-    z = Math.min(availW / it.out.w, availH / it.out.h);
+    z = Math.min(availW / out.w, availH / out.h);
     z = z >= 1 ? Math.floor(z) : z;
   }
-  for (const [cv, im] of cvs) {
-    const k = z * it.out.w / im.w;   // both shown at the result's on-screen size
+  for (const [cv, im] of [[$("srcCv"), src], [$("outCv"), out]]) {
+    const k = z * out.w / im.w;   // both shown at the result's on-screen size
     cv.style.width = `${im.w * k}px`;
     cv.style.height = `${im.h * k}px`;
   }
@@ -250,10 +278,14 @@ function paint(cv, img) {
 
 function outName(name) { return name.replace(/\.[^.]+$/, "") + "_dither.png"; }
 
-function downloadImage(img, name) {
+function toPng(img) {
   const cv = document.createElement("canvas");
   paint(cv, img);
-  cv.toBlob(b => downloadBlob(b, name), "image/png");
+  return new Promise(ok => cv.toBlob(ok, "image/png"));
+}
+
+async function downloadImage(img, name) {
+  downloadBlob(await toPng(img), name);
 }
 
 function downloadBlob(blob, name) {
@@ -263,6 +295,7 @@ function downloadBlob(blob, name) {
 }
 
 load();
+video = initVideo({ params, showPair, toPng, download: downloadBlob });
 bind();
 syncUi();
 changed();
