@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Texture Dither</title>
+<meta name="description" content="PS1-style texture filter: palette LUT in OKLab + 4x4 Bayer ordered dither. Runs locally in the browser.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 4'><rect width='4' height='4' fill='%230E1613'/><rect width='1' height='1' fill='%23F2B66B'/><rect x='2' y='2' width='1' height='1' fill='%23F2B66B'/><rect x='2' width='1' height='1' fill='%235FA5B0'/><rect y='2' width='1' height='1' fill='%235FA5B0'/></svg>">
+<style>
+  :root {
+    --bg: #0E1613; --panel: #151d1b; --line: #2a3634; --text: #d8dfdc; --dim: #8a9893;
+    --accent: #F2B66B; --focus: #3D7EF5; --check-a: #1b2422; --check-b: #232e2b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #eef0ee; --panel: #ffffff; --line: #d5dad7; --text: #1a2120; --dim: #5e6b67;
+      --accent: #a8641c; --check-a: #e4e7e5; --check-b: #f3f5f4;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 24px; }
+  h1 { font-size: 15px; margin: 0 0 2px; color: var(--accent); letter-spacing: .02em; }
+  .sub { color: var(--dim); margin: 0 0 12px; font-size: 12px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 18px 0 8px; font-weight: 600; }
+  label.row { display: grid; grid-template-columns: 96px 1fr 52px; align-items: center; gap: 8px; margin: 5px 0; }
+  label.row span.v { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, input[type=number], button {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font: inherit;
+  }
+  select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #1a1208; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .inline { display: flex; gap: 6px; align-items: center; margin: 5px 0; }
+  .inline input[type=number] { width: 72px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 4px; }
+  .sw { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dim); min-width: 0; }
+  .sw input[type=color] { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 3px; background: none; flex: none; }
+  .sw .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sw.off .name { text-decoration: line-through; opacity: .5; }
+  .sw .x { margin-left: auto; padding: 0 5px; border: none; background: none; color: var(--dim); }
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .bar { display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .bar .info { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .bar .spacer { flex: 1; }
+  .files { display: flex; gap: 6px; padding: 8px 14px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+  .files:empty { display: none; }
+  .files button { display: flex; gap: 6px; align-items: center; white-space: nowrap; font-size: 12px; }
+  .files button.sel { border-color: var(--accent); color: var(--accent); }
+  .stage { flex: 1; position: relative; overflow: auto; min-height: 0;
+    background: conic-gradient(var(--check-a) 25%, var(--check-b) 0 50%, var(--check-a) 0 75%, var(--check-b) 0) 0 0 / 16px 16px; }
+  .views { display: flex; gap: 16px; padding: 16px; align-items: flex-start; width: max-content; min-width: 100%; }
+  .views figure { margin: 0; }
+  .views figcaption { font-size: 11px; color: var(--dim); margin-bottom: 4px; }
+  canvas { image-rendering: pixelated; display: block; }
+  .drop { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--dim); pointer-events: none; }
+  .drop b { color: var(--text); display: block; font-size: 16px; margin-bottom: 6px; }
+  .stage.over { outline: 2px dashed var(--accent); outline-offset: -8px; }
+  .hint { color: var(--dim); font-size: 11px; margin: 4px 0 0; }
+  .lutprev { width: 100%; height: auto; margin-top: 6px; border: 1px solid var(--line); }
+  a { color: var(--accent); }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    aside { border-right: none; border-bottom: 1px solid var(--line); }
+    main { min-height: 70vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Texture Dither</h1>
+    <p class="sub">Palette LUT (OKLab) → 4×4 Bayer dither. Files never leave the browser.</p>
+
+    <h2>Preset</h2>
+    <div class="inline">
+      <select id="preset" style="flex:1"></select>
+      <button id="resetPreset" title="Reload preset values">Reset</button>
+    </div>
+
+    <h2>Resolution</h2>
+    <label class="row"><span>Mode</span>
+      <select id="sizeMode"><option value="div">Divide by</option><option value="width">Fixed width</option><option value="none">Keep size</option></select><span></span></label>
+    <label class="row" id="divRow"><span>Pixel scale</span><input type="range" id="div" min="1" max="16" step="1" value="2"><span class="v" id="divV"></span></label>
+    <label class="row" id="widthRow" hidden><span>Width (px)</span><input type="range" id="width" min="8" max="1024" step="8" value="128"><span class="v" id="widthV"></span></label>
+    <label class="row"><span>Upscale ×</span><input type="range" id="upscale" min="1" max="8" step="1" value="1"><span class="v" id="upscaleV"></span></label>
+    <label class="inline"><input type="checkbox" id="matchSize"> Upscale back to source size</label>
+
+    <h2>Dither</h2>
+    <label class="row"><span>Bits / channel</span><input type="range" id="bits" min="1" max="8" step="1" value="5"><span class="v" id="bitsV"></span></label>
+    <label class="row"><span>Alpha</span>
+      <select id="alpha"><option value="opaque">Opaque</option><option value="keep">Keep</option><option value="cutout">Cutout (1-bit)</option></select><span></span></label>
+
+    <h2>Palette LUT</h2>
+    <label class="row"><span>LUT</span>
+      <select id="lutMode"><option value="palette">From palette</option><option value="file">Load .png strip</option><option value="off">Off</option></select><span></span></label>
+    <div id="paletteBox">
+      <label class="row"><span>Gain</span><input type="range" id="gain" min="0.2" max="2" step="0.01"><span class="v" id="gainV"></span></label>
+      <label class="row"><span>Saturation</span><input type="range" id="saturation" min="0" max="3" step="0.01"><span class="v" id="saturationV"></span></label>
+      <label class="row"><span>Hue weight</span><input type="range" id="hue_weight" min="0" max="20" step="0.1"><span class="v" id="hue_weightV"></span></label>
+      <label class="row"><span>Softness</span><input type="range" id="softness" min="-4" max="-0.5" step="0.01"><span class="v" id="softnessV"></span></label>
+      <label class="row"><span>Snap light</span><input type="range" id="snap_light" min="0" max="1" step="0.01"><span class="v" id="snap_lightV"></span></label>
+      <label class="row"><span>Snap colour</span><input type="range" id="snap_color" min="0" max="1" step="0.01"><span class="v" id="snap_colorV"></span></label>
+      <h2>Swatches <span style="text-transform:none;letter-spacing:0;font-weight:400">— click name to toggle</span></h2>
+      <div class="swatches" id="swatches"></div>
+      <div class="btns"><button id="addSwatch">+ Swatch</button></div>
+    </div>
+    <div id="fileBox" hidden>
+      <input type="file" id="lutFile" accept="image/png">
+      <p class="hint">UE strip layout: 256×16 (or N²×N).</p>
+    </div>
+    <canvas id="lutPrev" class="lutprev" width="256" height="16"></canvas>
+    <div class="btns"><button id="saveLut">Download LUT .png</button></div>
+
+    <h2>Settings</h2>
+    <div class="btns">
+      <button id="exportCfg">Export JSON</button>
+      <button id="importCfg">Import JSON</button>
+      <input type="file" id="cfgFile" accept="application/json" hidden>
+    </div>
+    <p class="hint">Port of WeekendGirl's photo_prop.py texture filter — output is bit-identical to it.</p>
+  </aside>
+
+  <main>
+    <div class="bar">
+      <button id="open" class="primary">Open images…</button>
+      <input type="file" id="files" accept="image/*" multiple hidden>
+      <label class="inline">Zoom <select id="zoom"><option value="0">Fit</option><option>1</option><option>2</option><option>4</option><option>8</option></select></label>
+      <label class="inline"><input type="checkbox" id="showSrc" checked> Source</label>
+      <span class="info" id="info"></span>
+      <span class="spacer"></span>
+      <button id="dl" disabled>Download</button>
+      <button id="dlAll" disabled>Download all</button>
+    </div>
+    <div class="files" id="fileList"></div>
+    <div class="stage" id="stage">
+      <div class="views" id="views">
+        <figure id="srcFig"><figcaption>Source</figcaption><canvas id="srcCv"></canvas></figure>
+        <figure><figcaption id="outCap">Result</figcaption><canvas id="outCv"></canvas></figure>
+      </div>
+      <div class="drop" id="dropHint"><div><b>Drop textures here</b>or paste (⌘V / Ctrl+V), or use Open images…</div></div>
+    </div>
+  </main>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
