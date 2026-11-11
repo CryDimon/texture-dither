@@ -1,4 +1,4 @@
-// Core image filter, a port of WeekendGirl's Scripts/blender/photo_prop.py (build_lut, apply_lut, ps1_dither).
+// Core image filter, a port of WG's Scripts/blender/photo_prop.py (build_lut, apply_lut, ps1_dither).
 // Images are { w, h, data: Float32Array RGBA 0..1, sRGB }. No DOM here, so Node can test it.
 
 export const BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]].map(r => r.map(v => (v + 0.5) / 16));

@@ -9,4 +9,4 @@ PS1-style texture filter in the browser: downscale → palette LUT (OKLab soft-s
 - Load any UE-layout LUT strip (256×16), or download the generated one for use in Unreal.
 - Settings export/import as JSON; last settings are remembered in the browser.
 
-`dither.js` is a dependency-free port of WeekendGirl's `Scripts/blender/photo_prop.py` (`build_lut`, `apply_lut`, `ps1_dither`); its output is bit-identical to the Python version.
+`dither.js` is a dependency-free port of WG's `Scripts/blender/photo_prop.py` (`build_lut`, `apply_lut`, `ps1_dither`); its output is bit-identical to the Python version.
